@@ -21,15 +21,15 @@ export async function carregarConfig() {
   const segredo = JSON.parse(resposta.SecretString);
 
   cache = {
-    jwtSecret: segredo.jwt_secret,
+    jwtSecret: segredo.JWT_SECRET,
     issuer: process.env.JWT_ISSUER ?? 'oficina-auth',
     ttlSegundos: Number(process.env.JWT_TTL_SECONDS ?? 3600),
     db: {
-      host: segredo.host,
-      port: Number(segredo.port ?? 5432),
-      database: segredo.dbname,
-      user: segredo.username,
-      password: segredo.password,
+      host: segredo.DB_HOST,
+      port: Number(segredo.DB_PORT ?? 5432),
+      database: segredo.DB_DATABASE,
+      user: segredo.DB_USERNAME,
+      password: segredo.DB_PASSWORD,
       ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 5000,
     },
