@@ -1,0 +1,60 @@
+name: CD
+
+on:
+  push:
+    branches: [main, develop]
+
+# Impede que dois deploys concorram pelo mesmo state do Terraform.
+concurrency: deploy-${{ github.ref_name }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'producao' || 'homologacao' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: npm ci
+      - run: npm test
+
+      # Gera build/ com src + dependências de produção; o Terraform empacota
+      # esse diretório em dist/lambda.zip via archive_file.
+      - run: npm run build
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TFSTATE_BUCKET }}" \
+            -backend-config="region=${{ vars.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="dynamodb_table=${{ secrets.TFSTATE_LOCK_TABLE }}"
+
+      - name: Terraform apply
+        working-directory: terraform
+        run: |
+          terraform apply -auto-approve -input=false \
+            -var="tfstate_bucket=${{ secrets.TFSTATE_BUCKET }}" \
+            -var="backend_base_url=${{ vars.BACKEND_BASE_URL }}"
+
+      - name: Smoke test do endpoint de autenticação
+        working-directory: terraform
+        run: |
+          URL=$(terraform output -raw auth_endpoint)
+          # CPF sintaticamente inválido deve responder 400 — prova que a rota
+          # pública está de pé e que a Lambda executou.
+          codigo=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL" \
+            -H 'Content-Type: application/json' -d '{"cpf":"11111111111"}')
+          echo "HTTP $codigo"
+          [ "$codigo" = "400" ]

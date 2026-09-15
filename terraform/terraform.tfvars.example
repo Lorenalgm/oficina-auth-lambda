@@ -1,0 +1,7 @@
+# Copie para terraform.tfvars e ajuste.
+tfstate_bucket = "oficina-tfstate-SEU-SUFIXO"
+aws_region     = "us-east-1"
+
+# Durante o desenvolvimento, a URL pública do Railway.
+# Na gravação, trocar pela URL do NLB do Ingress no EKS.
+backend_base_url = "https://oficinamecanica-production-46fd.up.railway.app"
