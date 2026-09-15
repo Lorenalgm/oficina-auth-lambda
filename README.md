@@ -1,101 +1,147 @@
 # oficina-auth-lambda
 
-Função serverless de autenticação e API Gateway da oficina mecânica (Tech Challenge 13SOAT — Fase 3).
+**Autenticação por CPF** e **API Gateway** da Oficina Mecânica
+(Tech Challenge 13SOAT — Fase 3).
 
-## Propósito
+## Links
 
-Autentica o cliente pelo **CPF** e devolve um **JWT** consumido pelas rotas protegidas da `oficina-api`.
+| O quê | Link |
+|---|---|
+| 🚪 API em produção (API Gateway) | https://q7m1gn8vqi.execute-api.us-east-1.amazonaws.com |
+| 🪪 Login por CPF | `POST https://q7m1gn8vqi.execute-api.us-east-1.amazonaws.com/auth` |
+| 📘 Swagger | [abrir no Swagger Editor](https://editor.swagger.io/?url=https://raw.githubusercontent.com/Lorenalgm/oficina_mecanica/main/openapi.yaml) |
+| 📝 Por que JWT (RFC-003) | [RFC-003](https://github.com/Lorenalgm/oficina_mecanica/blob/main/docs/rfcs/RFC-003-estrategia-de-autenticacao.md) |
+| ⚙️ Código da API | [oficina_mecanica](https://github.com/Lorenalgm/oficina_mecanica) |
+| ☸️ Kubernetes | [oficina-infra-k8s](https://github.com/Lorenalgm/oficina-infra-k8s) |
+| 🐘 Banco de dados | [oficina-infra-db](https://github.com/Lorenalgm/oficina-infra-db) |
 
-- `POST /auth` (público) → valida o CPF, consulta o cliente no RDS e assina um JWT HS256 válido por 1h.
-- `ANY /api/{proxy+}` (protegido) → um **Lambda Authorizer** valida o JWT antes de o Gateway encaminhar a requisição ao Ingress do cluster.
+> O ambiente roda no AWS Academy Learner Lab e fica fora do ar entre as sessões.
 
-O mesmo token é revalidado dentro da `oficina-api` (middleware `ValidarJwt`), como defesa em profundidade.
+## O que faz
 
-## Tecnologias
+| Rota | Acesso | O que acontece |
+|---|---|---|
+| `POST /auth` | público | Lambda **authenticate** confere o CPF, busca o cliente no banco e devolve um token JWT válido por 1 hora |
+| `ANY /api/*` | com token | Lambda **authorizer** confere o token e, se válido, o Gateway encaminha a chamada para a API no Kubernetes |
 
-Node.js 22 · `jose` (JWT) · `pg` (PostgreSQL) · AWS Lambda · AWS API Gateway HTTP API · AWS Secrets Manager · Terraform · GitHub Actions.
+A API confere o token de novo, por segurança
+([ADR-001](https://github.com/Lorenalgm/oficina_mecanica/blob/main/docs/adrs/ADR-001-api-gateway-lambda-authorizer.md)).
 
 ## Arquitetura
 
+Leia pelos números: **(1 → 2)** é o login, **(3 → 5)** é uma chamada protegida.
+
 ```mermaid
 flowchart LR
-    C[Cliente] -->|POST /auth cpf| GW[API Gateway HTTP API]
-    C -->|ANY /api/** + Bearer| GW
-    GW -->|AWS_PROXY| AUTH[Lambda authenticate]
-    GW -->|REQUEST authorizer| AZ[Lambda authorizer]
-    AZ -->|allow| GW
-    GW -->|HTTP_PROXY| NLB[Ingress NGINX / NLB]
-    NLB --> API[oficina-api no EKS]
-    AUTH -->|SELECT clientes| RDS[(RDS PostgreSQL)]
-    AUTH -.->|jwt_secret| SM[Secrets Manager]
-    AZ -.->|jwt_secret| SM
-    API --> RDS
+    user(["👤 Cliente"])
+    gw["🚪 API Gateway<br/>limite de 50 chamadas/s"]
+
+    subgraph lambdas["🔐 Lambdas (Node.js 22)"]
+        direction TB
+        auth["🪪 authenticate<br/>CPF → token"]
+        authz["🛡️ authorizer<br/>token é válido?"]
+    end
+
+    sm["🔑 Secrets Manager<br/>chave do token e senha do banco"]
+    db[("🐘 PostgreSQL (RDS)")]
+    api["⚙️ oficina-api<br/>no Kubernetes (EKS)"]
+
+    user ==>|"1 · POST /auth com CPF"| gw
+    gw ==>|"2 · gera o token"| auth
+    auth -->|busca o cliente| db
+    user ==>|"3 · /api/* com token"| gw
+    gw ==>|"4 · confere"| authz
+    gw ==>|"5 · encaminha"| api
+    api --> db
+    auth -.-> sm
+    authz -.-> sm
+
+    style lambdas fill:#fdf4ff,stroke:#a21caf,color:#701a75
+    classDef entry fill:#e2e8f0,stroke:#475569,color:#0f172a;
+    classDef edge fill:#e0e7ff,stroke:#4f46e5,color:#312e81;
+    classDef sec fill:#f5d0fe,stroke:#a21caf,color:#701a75;
+    classDef app fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef data fill:#dcfce7,stroke:#15803d,color:#14532d;
+    class user entry;
+    class gw edge;
+    class auth,authz,sm sec;
+    class api app;
+    class db data;
 ```
 
-VPC, subnets, RDS e o segredo vêm do repositório **oficina-infra-db**, lido via `terraform_remote_state`.
+**Legenda:** 🟪 autenticação e segredos · 🟦 aplicação · 🟩 banco
 
-## Execução local
+Passo a passo com todos os casos de erro:
+[sequencia-auth.md](https://github.com/Lorenalgm/oficina_mecanica/blob/main/docs/arquitetura/sequencia-auth.md).
+
+## Respostas do login
+
+| Status | Quando |
+|---|---|
+| **200** + `token` | CPF válido e cliente cadastrado |
+| **400** | CPF com dígitos inválidos |
+| **404** | CPF válido, mas cliente não cadastrado |
+
+## Testar
+
+```bash
+API=https://q7m1gn8vqi.execute-api.us-east-1.amazonaws.com
+
+curl -X POST "$API/auth" -H 'Content-Type: application/json' -d '{"cpf":"11111111111"}'   # 400
+curl -X POST "$API/auth" -H 'Content-Type: application/json' -d '{"cpf":"<CPF cadastrado>"}' # 200
+curl "$API/api/clientes"                                                                  # 401 sem token
+curl "$API/api/clientes" -H "Authorization: Bearer $TOKEN"                                 # 200
+```
+
+## Stack
+
+| Item | Escolha |
+|---|---|
+| Funções | AWS Lambda, Node.js 22 |
+| Token | JWT HS256 (biblioteca `jose`) |
+| Banco | PostgreSQL via `pg` |
+| Entrada | AWS API Gateway (HTTP API) |
+| Infraestrutura como código | Terraform |
+
+## Rodar localmente
 
 ```bash
 npm ci
-npm test          # validação de CPF, mesmos casos do DocumentoTest da oficina-api
-npm run build     # gera build/ com src + dependências de produção
+npm test         # testes da validação de CPF
+npm run build    # gera a pasta build/ para o deploy
 ```
 
 ## Deploy
 
-Pré-requisito: `terraform apply` já executado em **oficina-infra-db**.
+Pré-requisito: [oficina-infra-db](https://github.com/Lorenalgm/oficina-infra-db)
+já aplicado (rede, banco e segredo vêm de lá).
 
 ```bash
 npm run build
 cd terraform
-cp terraform.tfvars.example terraform.tfvars   # ajuste tfstate_bucket e backend_base_url
+cp terraform.tfvars.example terraform.tfvars   # preencha tfstate_bucket e backend_base_url
 
 terraform init \
-  -backend-config="bucket=<bucket-do-state>" \
+  -backend-config="bucket=<bucket do state>" \
   -backend-config="region=us-east-1" \
-  -backend-config="dynamodb_table=<tabela-de-lock>"
+  -backend-config="dynamodb_table=<tabela de trava>"
 
 terraform apply
 terraform output auth_endpoint
 ```
 
-### `backend_base_url`
-
-Para onde o Gateway encaminha `/api/*`. O cluster **kind** local não é alcançável pela AWS, então:
-
-| Momento | Valor |
-|---|---|
-| Desenvolvimento | URL pública do Railway |
-| Gravação do vídeo | URL do NLB criado pelo Ingress no EKS |
-
-## Verificação
-
-```bash
-API=$(terraform -chdir=terraform output -raw api_url)
-
-curl -X POST "$API/auth" -H 'Content-Type: application/json' -d '{"cpf":"11111111111"}'   # 400
-curl -X POST "$API/auth" -H 'Content-Type: application/json' -d '{"cpf":"52998224725"}'   # 404 ou 200
-curl "$API/api/clientes"                                                                  # 401
-curl "$API/api/clientes" -H "Authorization: Bearer $TOKEN"                                 # 200
-```
+`backend_base_url` é o endereço do Load Balancer do cluster, obtido com
+`make nlb` no [oficina-infra-k8s](https://github.com/Lorenalgm/oficina-infra-k8s).
+É para lá que o Gateway encaminha as chamadas `/api/*`.
 
 ## CI/CD
 
-- `ci.yml` — `npm test` + `terraform fmt -check` / `validate` em todo PR.
-- `cd.yml` — em `develop` (homologação) e `main` (produção): testes, build, `terraform apply` e smoke test do endpoint de autenticação.
+| Workflow | Quando roda | O que faz |
+|---|---|---|
+| `ci.yml` | pull request | Testes + validação do Terraform |
+| `cd.yml` | push em `main` ou `develop` | Testes, build, deploy na AWS e teste rápido do `/auth` |
 
-Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `TFSTATE_BUCKET`, `TFSTATE_LOCK_TABLE`.
-Variables: `AWS_REGION`, `BACKEND_BASE_URL`.
-
-## Repositórios relacionados
-
-| Repositório | Papel |
-|---|---|
-| `oficina-api` | Aplicação Laravel no Kubernetes |
-| `oficina-infra-db` | Terraform da VPC e do RDS |
-| `oficina-infra-k8s` | Terraform do EKS |
-
-## Swagger
-
-A documentação das rotas protegidas fica na `oficina-api`: `openapi.yaml`, publicado no ReadMe.io.
+- `main` = produção, `develop` = homologação. A `main` só recebe código por pull request.
+- Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`,
+  `TFSTATE_BUCKET`, `TFSTATE_LOCK_TABLE`.
+- Variables: `AWS_REGION`, `BACKEND_BASE_URL`.
