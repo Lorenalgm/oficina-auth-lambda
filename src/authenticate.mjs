@@ -2,6 +2,7 @@ import pg from 'pg';
 import { SignJWT } from 'jose';
 import { cpfValido, normalizarCpf } from './cpf.mjs';
 import { carregarConfig } from './config.mjs';
+import { recusaDoCliente } from './cliente.mjs';
 
 let pool = null;
 
@@ -44,16 +45,18 @@ export async function handler(event) {
     const config = await carregarConfig();
 
     const { rows } = await obterPool(config).query(
-      'SELECT id, nome FROM clientes WHERE documento = $1 LIMIT 1',
+      'SELECT id, nome, ativo FROM clientes WHERE documento = $1 LIMIT 1',
       [documento],
     );
 
-    if (rows.length === 0) {
-      logar('warning', 'cliente_nao_encontrado', { event_type: 'auth_failed', motivo: 'cliente_nao_encontrado', correlation_id: correlationId });
-      return resposta(404, { message: 'Cliente não encontrado.' }, correlationId);
+    const cliente = rows[0];
+    const recusa = recusaDoCliente(cliente);
+
+    if (recusa) {
+      logar('warning', recusa.motivo, { event_type: 'auth_failed', motivo: recusa.motivo, correlation_id: correlationId });
+      return resposta(recusa.statusCode, { message: recusa.message }, correlationId);
     }
 
-    const cliente = rows[0];
     const agora = Math.floor(Date.now() / 1000);
 
     const token = await new SignJWT({ cpf: documento, nome: cliente.nome })
