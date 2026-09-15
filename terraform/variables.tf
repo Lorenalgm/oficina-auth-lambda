@@ -29,3 +29,13 @@ variable "jwt_ttl_seconds" {
   type        = number
   default     = 3600
 }
+
+variable "lambda_role_name" {
+  description = <<-DOC
+    Nome da IAM role de execução das Lambdas. No AWS Academy Learner Lab não é
+    possível criar roles, então usamos a LabRole pré-existente do ambiente. Em
+    uma conta própria, aponte para uma role dedicada de mínimo privilégio.
+  DOC
+  type        = string
+  default     = "LabRole"
+}

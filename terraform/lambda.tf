@@ -40,7 +40,7 @@ resource "aws_lambda_function" "auth" {
   for_each = local.funcoes
 
   function_name    = "${var.projeto}-${each.key}"
-  role             = aws_iam_role.lambda.arn
+  role             = data.aws_iam_role.lambda.arn
   runtime          = "nodejs22.x"
   handler          = each.value
   filename         = data.archive_file.pacote.output_path
