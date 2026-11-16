@@ -24,15 +24,8 @@ export async function carregarConfig() {
     jwtSecret: segredo.JWT_SECRET,
     issuer: process.env.JWT_ISSUER ?? 'oficina-auth',
     ttlSegundos: Number(process.env.JWT_TTL_SECONDS ?? 3600),
-    db: {
-      host: segredo.DB_HOST,
-      port: Number(segredo.DB_PORT ?? 5432),
-      database: segredo.DB_DATABASE,
-      user: segredo.DB_USERNAME,
-      password: segredo.DB_PASSWORD,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 5000,
-    },
+    osServiceUrl: process.env.OS_SERVICE_URL,
+    internalToken: segredo.INTERNAL_API_TOKEN,
   };
 
   return cache;
