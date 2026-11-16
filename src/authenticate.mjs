@@ -1,19 +1,8 @@
-import pg from 'pg';
 import { SignJWT } from 'jose';
 import { cpfValido, normalizarCpf } from './cpf.mjs';
 import { carregarConfig } from './config.mjs';
 import { recusaDoCliente } from './cliente.mjs';
-
-let pool = null;
-
-function obterPool(config) {
-  // Um pool por container, com 1 conexão: a Lambda só atende uma invocação por
-  // vez e o RDS db.t3.micro tem poucas conexões disponíveis.
-  if (!pool) {
-    pool = new pg.Pool({ ...config.db, max: 1, idleTimeoutMillis: 30000 });
-  }
-  return pool;
-}
+import { buscarCliente } from './osService.mjs';
 
 function resposta(statusCode, corpo, correlationId) {
   return {
@@ -44,12 +33,11 @@ export async function handler(event) {
     const documento = normalizarCpf(cpf);
     const config = await carregarConfig();
 
-    const { rows } = await obterPool(config).query(
-      'SELECT id, nome, ativo FROM clientes WHERE documento = $1 LIMIT 1',
-      [documento],
-    );
-
-    const cliente = rows[0];
+    const cliente = await buscarCliente(documento, {
+      baseUrl: config.osServiceUrl,
+      token: config.internalToken,
+      correlationId,
+    });
     const recusa = recusaDoCliente(cliente);
 
     if (recusa) {

@@ -21,7 +21,7 @@
 
 | Rota | Acesso | O que acontece |
 |---|---|---|
-| `POST /auth` | público | Lambda **authenticate** confere o CPF, busca o cliente no banco e devolve um token JWT válido por 1 hora |
+| `POST /auth` | público | Lambda **authenticate** confere o CPF, consulta o cliente na rota interna do OS Service e devolve um token JWT válido por 1 hora |
 | `ANY /api/*` | com token | Lambda **authorizer** confere o token e, se válido, o Gateway encaminha a chamada para a API no Kubernetes |
 
 A API confere o token de novo, por segurança
@@ -42,13 +42,13 @@ flowchart LR
         authz["🛡️ authorizer<br/>token é válido?"]
     end
 
-    sm["🔑 Secrets Manager<br/>chave do token e senha do banco"]
+    sm["🔑 Secrets Manager<br/>chave do token e token interno"]
     db[("🐘 PostgreSQL (RDS)")]
     api["⚙️ oficina-api<br/>no Kubernetes (EKS)"]
 
     user ==>|"1 · POST /auth com CPF"| gw
     gw ==>|"2 · gera o token"| auth
-    auth -->|busca o cliente| db
+    auth -->|GET /internal/clientes| api
     user ==>|"3 · /api/* com token"| gw
     gw ==>|"4 · confere"| authz
     gw ==>|"5 · encaminha"| api
@@ -99,7 +99,7 @@ curl "$API/api/clientes" -H "Authorization: Bearer $TOKEN"                      
 |---|---|
 | Funções | AWS Lambda, Node.js 22 |
 | Token | JWT HS256 (biblioteca `jose`) |
-| Banco | PostgreSQL via `pg` |
+| Consulta do cliente | `GET /internal/clientes/por-documento/{cpf}` do OS Service, com `X-Internal-Token` (a Lambda não acessa o banco do OS) |
 | Entrada | AWS API Gateway (HTTP API) |
 | Infraestrutura como código | Terraform |
 

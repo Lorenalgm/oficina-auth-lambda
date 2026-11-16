@@ -8,6 +8,3 @@ output "auth_endpoint" {
   value       = "${aws_apigatewayv2_stage.default.invoke_url}auth"
 }
 
-output "lambda_sg_id" {
-  value = aws_security_group.lambda.id
-}
