@@ -7,8 +7,8 @@
 
 | O quê | Link |
 |---|---|
-| 🚪 API em produção (API Gateway) | https://q7m1gn8vqi.execute-api.us-east-1.amazonaws.com |
-| 🪪 Login por CPF | `POST https://q7m1gn8vqi.execute-api.us-east-1.amazonaws.com/auth` |
+| 🚪 API em produção (API Gateway) | https://eme31yzdx6.execute-api.us-east-1.amazonaws.com |
+| 🪪 Login por CPF | `POST https://eme31yzdx6.execute-api.us-east-1.amazonaws.com/auth` |
 | 📘 Swagger | [abrir no Swagger Editor](https://editor.swagger.io/?url=https://raw.githubusercontent.com/Lorenalgm/oficina_mecanica/main/openapi.yaml) |
 | 📝 Por que JWT (RFC-003) | [RFC-003](https://github.com/Lorenalgm/oficina_mecanica/blob/main/docs/rfcs/RFC-003-estrategia-de-autenticacao.md) |
 | ⚙️ Código da API | [oficina_mecanica](https://github.com/Lorenalgm/oficina_mecanica) |
@@ -85,7 +85,7 @@ Passo a passo com todos os casos de erro:
 ## Testar
 
 ```bash
-API=https://q7m1gn8vqi.execute-api.us-east-1.amazonaws.com
+API=https://eme31yzdx6.execute-api.us-east-1.amazonaws.com
 
 curl -X POST "$API/auth" -H 'Content-Type: application/json' -d '{"cpf":"11111111111"}'   # 400
 curl -X POST "$API/auth" -H 'Content-Type: application/json' -d '{"cpf":"<CPF cadastrado>"}' # 200
