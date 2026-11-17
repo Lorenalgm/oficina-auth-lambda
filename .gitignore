@@ -5,3 +5,4 @@ dist/
 *.tfstate*
 *.tfvars
 !*.tfvars.example
+.env
